@@ -12,7 +12,7 @@ load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s, %(levelname)s, %(message)s',
+    format='%(asctime)s, %(levelname)s, %(message)s, %(funcName)s, %(lineno)s',
     filename='main.log',
 )
 
@@ -36,9 +36,9 @@ def send_message(bot, message):
     """Отправка сообщения."""
     try:
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
-        logging.info(f'Сообщение удачно отправлено: {message}')
+        logging.info(f'Message was successfully sent: {message}')
     except telegram.error.TelegramError as error:
-        logging.error(f'Сообщение не отправленно: {error}')
+        logging.error(f'Message has not been sent: {error}')
 
 
 def get_api_answer(current_timestamp):
@@ -52,29 +52,39 @@ def get_api_answer(current_timestamp):
     except Exception as error:
         logging.error(f'Error during request for main API: {error}')
 
-    if response.status_code == HTTPStatus.OK:
-        return response.json()
-    elif response.status_code != HTTPStatus.OK:
+    if response.status_code != HTTPStatus.OK:
         message = f'Access error:{response.status_code}, {ENDPOINT}, {HEADERS}'
         logging.error(message)
-        raise message
+        raise exceptions.ResponseException(message)
+
+    try:
+        return response.json()
+    except Exception:
+        logging.error('Server returned invalid json')
+        send_message('Сервер вернул невалидный json')
 
 
 def check_response(response):
     """Проверка ответа."""
     logging.info('Start checking the server response')
-    response['homeworks']
-    homework = response.get('homeworks')
-    curent_date = response.get('current_date')
+    if response['homeworks'] == []:
+        message = ('There is no answer')
+        logging.info(message)
 
-    if curent_date is None:
-        raise exceptions.ResponseException(f'Response has not {curent_date}')
-    elif homework is None:
-        raise exceptions.ResponseException(f'Response has not {homework}')
-    elif not isinstance(homework, list):
-        message = (f'Homeworks does not match the data type {list}')
-        raise TypeError(message)
-    return homework
+    if isinstance(response, dict):
+        homework = response.get('homeworks')
+        curent_date = response.get('current_date')
+        if curent_date is None:
+            raise exceptions.ResponseException(
+                f'Response has not {curent_date}')
+        elif homework is None:
+            raise exceptions.ResponseException(
+                f'Response has not {homework}')
+        elif not isinstance(homework, list):
+            message = (f'Homework does not match the data type: {list}')
+            raise TypeError(message)
+        logging.info(f'Get result: {homework}')
+        return homework
 
 
 def parse_status(homework):
@@ -85,32 +95,24 @@ def parse_status(homework):
     if homework_status in HOMEWORK_STATUSES:
         verdict = HOMEWORK_STATUSES[homework_status]
         return f'Изменился статус проверки работы "{homework_name}". {verdict}'
-    message = (
-        f'Недокументированный статус домашней работы {homework_status}'
-    )
-    logging.error(message)
-    raise KeyError(message)
+    elif homework_status not in HOMEWORK_STATUSES:
+        message = (
+            f'Недокументированный статус домашней работы {homework_status}')
+        logging.error(message)
+        raise KeyError(message)
 
 
 def check_tokens():
     """Проверка наличия ТОКЕНОВ."""
-    tokens = {
-        'PRACTICUM_TOKEN': PRACTICUM_TOKEN,
-        'TELEGRAM_TOKEN': TELEGRAM_TOKEN,
-        'TELEGRAM_CHAT_ID': TELEGRAM_CHAT_ID
-    }
-    for token in tokens:
-        if tokens[token] is None:
-            logging.critical('Missing or incorrect token!')
-            return False
-    return True
+    tokens = all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID])
+    return tokens
 
 
 def main():
     """Основная логика работы бота."""
     if not check_tokens():
         logging.critical('Missing or incorrect tokens!')
-        sys.exit()
+        sys.exit('Проблема с КОНСТАНТАМИ!')
 
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     current_timestamp = int(time.time())
@@ -118,16 +120,17 @@ def main():
     while True:
         try:
             response_api = get_api_answer(current_timestamp)
-            homework = check_response(response_api)
-            if homework != []:
-                status_message = parse_status(homework[0])
-                send_message(bot, status_message)
+            if response_api:
+                homework = check_response(response_api)
+                if homework:
+                    status_message = parse_status(homework[0])
+                    send_message(bot, status_message)
             else:
-                logging.debug('Статус домашней работы не обновлен.')
+                logging.debug('Status of homework has not been updated.')
             current_timestamp = response_api.get('current_date')
 
         except Exception as error:
-            message = f'Сбой в работе программы: {error}'
+            message = f'Program malfunction: {error}'
             logging.error(message)
             send_message(bot, message)
 

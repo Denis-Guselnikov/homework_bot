@@ -1,4 +1,3 @@
-
 class EmptyAPIResponseError(Exception):
     """В случае, если словарь пуст."""
 
