@@ -67,11 +67,11 @@ def get_api_answer(current_timestamp):
 def check_response(response):
     """Проверка ответа."""
     logging.info('Start checking the server response')
-    if response['homeworks'] == []:
-        message = ('There is no answer')
-        logging.info(message)
 
-    if isinstance(response, dict):
+    if not isinstance(response, dict):
+        message = (f'Homework does not match the data type: {dict}')
+        raise TypeError(message)
+    elif isinstance(response, dict):
         homework = response.get('homeworks')
         curent_date = response.get('current_date')
         if curent_date is None:
@@ -83,29 +83,31 @@ def check_response(response):
         elif not isinstance(homework, list):
             message = (f'Homework does not match the data type: {list}')
             raise TypeError(message)
-        logging.info(f'Get result: {homework}')
-        return homework
+    elif isinstance(response['homeworks'], list):
+        message = ('There is no answer')
+        logging.info(message)
+    logging.info(f'Get result: {homework}')
+    return homework
 
 
 def parse_status(homework):
     """Получение homework_name и status."""
+    logging.info('Start checking the parse status')
     homework_name = homework.get('homework_name')
     homework_status = homework.get('status')
 
-    if homework_status in HOMEWORK_STATUSES:
-        verdict = HOMEWORK_STATUSES[homework_status]
-        return f'Изменился статус проверки работы "{homework_name}". {verdict}'
-    elif homework_status not in HOMEWORK_STATUSES:
+    if homework_status not in HOMEWORK_STATUSES:
         message = (
             f'Недокументированный статус домашней работы {homework_status}')
         logging.error(message)
         raise KeyError(message)
+    verdict = HOMEWORK_STATUSES[homework_status]
+    return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
 def check_tokens():
     """Проверка наличия ТОКЕНОВ."""
-    tokens = all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID])
-    return tokens
+    return all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID])
 
 
 def main():
